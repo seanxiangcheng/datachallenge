@@ -1,6 +1,6 @@
 ---
-title: "Simulation and Correlation"
-author: "Xiang (Sean) Cheng"
+title: "Challenge 1 Simulation and Correlation"
+author: "Xiang (Sean) Cheng (chengxiang.cn@gmail.com)"
 date: "June 11, 2016"
 output: html_document
 ---
@@ -10,18 +10,19 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Introduction
-Revenue growth prediction is an interesting and practical problem. I do have questions because I am new to the real-business revenue prediction, but I will make some assumptions due to limitted time. In real working environment, we need to communciate to make decisions about the assumptions and parameters.
+Revenue growth prediction is an interesting and practical problem. I do have questions because I am new to this type of revenue prediction problem, but I will make some assumptions due to limitted time. In real working environment, we need to communciate to make decisions about the assumptions and parameters.
+([More information about the problem](http://htmlpreview.github.com/?https://raw.githubusercontent.com/seanxiangcheng/datachallenge/master/Problemsets/Data_Challenge_Guide.html))
 
 #### Assumptions
-  1. The question we want to answer is the dependence of total revenue grwoth on correlation.
+  1. The question we want to answer is the dependence of total revenue growth on correlation.
   2. Correlation can be positive or negative;
     * costomers need both features: positive correlation;
     * costomers need only 1 feature: negative or no correlation;
   3. Both features boost the revenue cumulatively (after correlation);
-    * Product with more features has higher price;
-    * Each feature can generate regular cash flow;
-  4. Both feature is unlikely to decrease revenue.
-    * Negative random variables have very small probability;
+    * The product with more features has higher price;
+    * Each feature can generate regular cash flow (by selling disposable consumables) ;
+  4. Both features are unlikely to decrease revenue.
+    * Negative growth rate has very small or no probability;
     * Normal distribution: standard deviation<=0.02;
     * Uniform distribution: min>=0.01;
   5. Correlations are in a reasonable range. Here we assume it is between -0.8 and 0.8.
@@ -34,10 +35,12 @@ In this task, for simplicity, assume both are from the same distribution, either
 ```{r, echo=FALSE, warning=FALSE}
 # load libraries and constants
 library(MASS)
+library(ggplot2)
 r.min = -0.8
 r.max = 0.8
 ```
-2 functions to generate correlated random normal variables and to examine the mean and correlation matrix.
+
+The 2 functions to generate correlated random normal variables and to examine the mean and correlation matrix.
 ```{r, warning=FALSE}
 # function to generate correlated random normal variables
 normal_xy <- function(r=0.5, n=1e3, mu=c(0.05, 0.07), var=c(0.02^2, 0.02^2)){
@@ -56,15 +59,15 @@ check_mean_cor <- function(df_xy){
 }
 ```
 
-Quick check the functions
+A quick check of the 2 functions:
 ```{r, warning=FALSE}
 check_mean_cor(normal_xy(r=0.5, n=1e5))
 ```
 
-Here, we simulate the revenue and plot the 90% confidence interval of the growth rate with both features. The standard deviations are 0.02 and 0.02.
+Here, we simulate the revenue and plot the 90% confidence interval of the growth rate with both features. The standard deviations are 0.02 and 0.02, respectively.
 ```{r, warning=FALSE, message=FALSE}
 # 100 different correlations
-n.obs = 10; CI=0.9;
+n.obs = 100; CI=0.9;
 rs = seq(r.min, r.max, length.out=n.obs)
 total.mean = rep(0, n.obs)
 CI.low = rep(0, n.obs)
@@ -76,7 +79,6 @@ for(i in 1:n.obs){
   CI.low[i] = quantile(total, (1-CI)/2.)
   CI.high[i] = quantile(total, (1+CI)/2.)
 }
-require(ggplot2)
 df = data.frame(rs=rs, mean=total.mean, low=CI.low, high=CI.high)
 ggplot(df, aes(x=rs , y = mean)) + geom_point(size = 1) + geom_line()+
   geom_line(aes(y = low, colour = "red"))+  geom_line(aes(y = high, colour = "red"))+
@@ -85,9 +87,9 @@ ggplot(df, aes(x=rs , y = mean)) + geom_point(size = 1) + geom_line()+
 
 
 #### 2. Uniform distributions
-In a similar manner, we can also get the revenue prediction of uniformly distributed rates. Instead of using a build-in function, we can use cholesky decomposition to transform independent random variables to correlated ones. (Functions are hidden in raw R markdown file by setting 'echo=FALSE'.)
-
+In a similar manner, we can also get the revenue prediction of uniformly distributed rates. Instead of using a build-in function, we need to use cholesky decomposition to transform the independent random variables to correlated ones. (Functions are hidden in raw R markdown file by setting 'echo=FALSE'.)
 The ranges of uniform distribtuions are [0.03, 0.07] and [0.05, 0.09], respectively.
+
 ```{r, warning=FALSE, echo=FALSE}
 # function to generate correlated random normal variables
 uniform_xy <- function(r=0.5, n=1e3, mu=c(0.05, 0.07), span=c(0.02, 0.02)){
@@ -102,7 +104,7 @@ uniform_xy <- function(r=0.5, n=1e3, mu=c(0.05, 0.07), span=c(0.02, 0.02)){
 }
 
 # 100 different correlations
-n.obs = 10; CI=0.9;
+n.obs = 100; CI=0.9;
 rs = seq(r.min, r.max, length.out=n.obs)
 total.mean = rep(0, n.obs)
 CI.low = rep(0, n.obs)
@@ -114,14 +116,13 @@ for(i in 1:n.obs){
   CI.low[i] = quantile(total, (1-CI)/2.)
   CI.high[i] = quantile(total, (1+CI)/2.)
 }
-require(ggplot2)
+
 df = data.frame(rs=rs, mean=total.mean, low=CI.low, high=CI.high)
 ggplot(df, aes(x=rs , y = mean)) + geom_point(size = 1) + geom_line()+
   geom_line(aes(y = low, colour = "red"))+  geom_line(aes(y = high, colour = "red"))+
   labs(x="Correlation between X and Y",y="Total Revenue Growth Rate", title=paste0("Total Growth Rate (Confidence Interval ", CI*100, "%)") )+ theme(legend.position="none")
 ```
 
-The result looks weired. It may be due to incorrect correlation transform using Cholesky deposition. 
 
 ## Task2: different distributions
 We here assume the impact of X is normally distributed while the impact of Y is uniformally distributed. The functions are hidden in the raw R markdown file ('echo=FALSE').
@@ -138,18 +139,17 @@ rand_xy <- function(r=0.5, n=1e3, mu=c(0.05, 0.07), varx=0.02^2, spany=0.02){
   names(rxy) = c('X', 'Y')
   return(rxy)
 }
-
 ```
 
-Test the correlation between the 2 samples.
+Test the correlation between the 2 correlated samples.
 ```{r}
 check_mean_cor(normal_xy(r=0.5, n=1e5))
-```{r}
+```
 
 
 ```{r, warning=FALSE, echo=FALSE}
 # 100 different correlations
-n.obs = 10; CI=0.9;
+n.obs = 100; CI=0.9;
 rs = seq(r.min, r.max, length.out=n.obs)
 total.mean = rep(0, n.obs)
 CI.low = rep(0, n.obs)
@@ -161,17 +161,17 @@ for(i in 1:n.obs){
   CI.low[i] = quantile(total, (1-CI)/2.)
   CI.high[i] = quantile(total, (1+CI)/2.)
 }
-require(ggplot2)
 df = data.frame(rs=rs, mean=total.mean, low=CI.low, high=CI.high)
 ggplot(df, aes(x=rs , y = mean)) + geom_point(size = 1) + geom_line()+
   geom_line(aes(y = low, colour = "red"))+  geom_line(aes(y = high, colour = "red"))+
   labs(x="Correlation between X and Y",y="Total Revenue Growth Rate", title=paste0("Total Growth Rate (Confidence Interval ", CI*100, "%)") )+ theme(legend.position="none")
 ```
 
-Note:
+
+__Note__:
 
   1. **Correlated random variables**:
-  In my research, we use advanced Monte Carlo algorithms, complex networks, and C++ to simulate physical systems. Mostly, we use independent random variables, so I don't have much experience in generating correlated random variables using R. There may be better ways to do, and I am very intestered to learn. I also hope I can learn new things from a job.
+  In my research, we use advanced Monte Carlo algorithms, complex networks, and C++ to simulate physical systems. Mostly, we use independent random variables, so I don't have much experience in generating correlated random variables using R. There may be better ways to do, and I am very intestered to learn. I do hope I can learn new things from a job. The good thing is that I have a soild foundation in statistics, math, and programming. It should be quick for me to learn new things.
 
-  2. **Programming language**:
-  I can use R, Python, and C++. R is chosen here to be consistent with the guide R markdown file. I also have experience in interpreting outputs from SAS, STATA, and SPSS. The diverse skill set may make team-work easier.  
+  2. **Programming languages**:
+  I can use R, Python, and C++. R is chosen here to be consistent with your choice of generating the guide files. I also have experience in interpreting outputs from SAS, STATA, and SPSS. My diverse skill set may make team-work easier.

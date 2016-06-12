@@ -1,13 +1,13 @@
 ---
 title: "Challenge2 Integration and Exploration"
-author: "Xiang (Sean) Cheng"
+author: "Xiang (Sean) Cheng (chengxiang.cn@gmail.com)"
 date: "June 11, 2016"
 output: html_document
 ---
 
 ## Introduction
 
-Given 3 datasets, explore and integrate them to gain insights.
+Given [3 datasets](https://github.com/seanxiangcheng/datachallenge/tree/master/data), explore and integrate them to gain insights.
 
 The good thing is that the data points are clean and consistent within a dataset. The bad thing is that we have no idea what the data is about and how the data is collected. We can start with exploratory analysis.
 
@@ -33,11 +33,11 @@ df.Act = read.csv(f_activity)
 df.E1 = read.csv(f_event1)
 df.E2 = read.csv(f_event2)
 ```
-Notice that the information includes date, time, and activities. Most likely, the pattern may be hidden in the date and time. We need to formulate the string datetime into date and time data in R.
+Notice that the information includes date, time, and activities. Most likely, the pattern may be hidden in the date and time. We need to convert the string-datetime into date and time data in R.
 
 2. date and time information retrieval 
 
-We create new columns for day, hour, and gmt in seconds for different time zones (UTC and EDT).
+We create new columns for day, hour, and gmt in seconds for different time zones (UTC and EDT). Also, a new column "relative_gmt_ts" is created by subtracting the minimum of gmt_ts in all 3 data sets. The purpose of the relative time is to avoid any integer overflow and make it easier to read.
 ```{r}
 # process E1 data set
 df.E1 = transform(df.E1, datetime.utc = ymd_hms(Timestamp))
@@ -88,13 +88,14 @@ kable(head(df.E2, 2), format = "markdown", align='l')
 
 ## Exploratory analysis
 
-1. Summary of columns of interest which are the columns with information of date, time, and activities/events.
+  1. Summary of columns of interest which are the columns with information of date, time, and activities/events.
 ```{r}
 summary(df.Act)
 summary(df.E1[, c(-2, -3)])
 summary(df.E2[, c(-2, -3)])
 ```
 
+  2. Boxplots of the relative gmt in seconds 
 ```{r}
 boxplot( relative_gmt_ts ~ ActivityCodes, df.Act)
 title("Activities.csv")
@@ -105,7 +106,9 @@ title("Events_2.csv")
 ```
 
 
-2. Aggregate the tables based on activities or events
+  3. Aggregate the tables based on activities or events
+  
+  For each table, aggregate based on activities or events to get the _average_, _standard deviation_, and _length_ of the relative gmt in seconds.
 ```{r}
 meansd.act = aggregate(relative_gmt_ts~ActivityCodes, df.Act, FUN=function(x)c(ave=mean(x), std=sd(x), len=length(x)))
 (meansd.act= meansd.act[order(meansd.act$relative_gmt_ts[, 1]), ])
@@ -123,18 +126,21 @@ meansd.e2 = aggregate(relative_gmt_ts~EventCodes, df.E2, FUN=function(x)c(ave=me
 
 
 ## Exploration summary
+
 As shown in the boxplots and the aggregated table, we suspect
 
-  1. All events and activities happens on the same day; 
+  1. All events and activities happens on the same day, i.e. Tuesday, 5/10/2016; 
   2. Events1 and Events2 has the same format but are at different times;
-  3. Activities may be part of the events, thus they should have similar times;
+  3. Activities may be part of the events, thus they should have about the times;
   4. The time difference between activities and corresponding events should be very small;
   
   Based on the time-closeness, we may use KNN to classify the activities.
   
+  
 ## Classification of Activities
 
 ### Data preprocessing 
+
 We need to integrate the events data sets together and keep the relevant columns which are "relative_gmt_ts" 
 ```{r}
 df.E = rbind(df.E1, df.E2)[ ,c('relative_gmt_ts', 'EventCodes')]
@@ -151,11 +157,11 @@ Activities table:
 kable(head(df.A, 3), format = "markdown", align='l')
 ````
 
-### k-Nearest_Neighbor classification
+### k-Nearest-Neighbor classification
 
-We try 1, 5, 10, 15, 20-Nearest_Neighbor classification using the KNN classifier in library(class).
+We try 1, 5, 10, 15, 20-Nearest-Neighbor classification using the KNN classifier in library(class).
 
-```{r}
+```{r, cache=T}
 # KNN prediction with k=1, 5, 10, 15, 20
 df.A$Prediction_1NN = knn(as.matrix(df.E$relative_gmt_ts), as.matrix(df.A$relative_gmt_ts), df.E$EventCodes, k=1)
 df.A$Prediction_5NN = knn(as.matrix(df.E$relative_gmt_ts), as.matrix(df.A$relative_gmt_ts), df.E$EventCodes, k=5)
@@ -165,7 +171,7 @@ df.A$Prediction_20NN = knn(as.matrix(df.E$relative_gmt_ts), as.matrix(df.A$relat
 kable(df.A[order(df.A$ActivityCodes),-1], format="markdown", align = 'l')
 ```
 
-From the results, we can see the prediction are very consistent among different k's. To use a moderate model complexity, we pick 5-NN predictions as the final prediction. The final prediction is a majority vote of all predictions. In most cases, there is only 1 choice. 
+From the results, we can see the prediction are very consistent among different k's, which make us feel confident with our prediction. To use a moderate model complexity, we pick 5-NN predictions as the final prediction. The final prediction is a majority vote of all predictions. In most cases, there is only 1 choice. 
 ```{r}
 # find the majority of prediction for a certain activity 
 activities = sort(unique(df.A$ActivityCodes))
@@ -181,13 +187,14 @@ kable(df.Final_Prediction, format = "markdown", align = 'l')
 
 
 ## Conclusion
-The data sets consists of information of activities and events. By data exploration, the activities is suspected to be in a certain events at about the same time.  In the end, we use KNN classfier to match the activities to the corresponding events. From the results with different KNN classifiers, we are confident to make the prediction (as shown in the table above).
+The data sets consist of information of activities and events. By data exploration, the activities are suspected to be in certain events at about the same time.  Based on the nature of the problem, we choose KNN classfier to match the activities to the corresponding events. From the results with different KNN classifiers, we are confident to make the prediction as shown in the table above.
 
 
 __Note__
+
   1. This report is to shown the whole process, from knowing nothing to predictive modeling; in real-work environment, most outputs and tables will be removed to keep the story straightforward and easy to understand. 
   2. I should have allowed more time to ask questions and to learn more about the data, but I will be travaling to Mountain View tomorrow for an onsite interview. I hope we could talk on Monday afternoon if I have the opportunity.
   3. If I have more time, I would write more documentation and use more R functions to keep it concise. 
-  4. I am proficient in Python and C++, too. 
+  4. I am proficient in Python and C++, too. That's also why my R code sometimes looks like C++ or Python style.
   
   
