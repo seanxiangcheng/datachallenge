@@ -1,0 +1,193 @@
+---
+title: "Challenge2 Integration and Exploration"
+author: "Xiang (Sean) Cheng"
+date: "June 11, 2016"
+output: html_document
+---
+
+## Introduction
+
+Given 3 datasets, explore and integrate them to gain insights.
+
+The good thing is that the data points are clean and consistent within a dataset. The bad thing is that we have no idea what the data is about and how the data is collected. We can start with exploratory analysis.
+
+## Data cleaning and information retrieval 
+  
+1. load the data 
+```{r, echo=F, warning=F, message=F}
+setwd("/home/xcheng0907/GoogleDrive/Career/Applications/IntuitiveSurgical/datachallenge")
+library(knitr)
+library(lubridate)
+library(class)
+```
+
+```{r}
+# data files paths 
+data_dir = "./data/"
+f_activity = paste0(data_dir, "Activities.csv")
+f_event1 = paste0(data_dir, "Events_1.csv")
+f_event2 = paste0(data_dir, "Events_2.csv")
+
+# load data
+df.Act = read.csv(f_activity)
+df.E1 = read.csv(f_event1)
+df.E2 = read.csv(f_event2)
+```
+Notice that the information includes date, time, and activities. Most likely, the pattern may be hidden in the date and time. We need to formulate the string datetime into date and time data in R.
+
+2. date and time information retrieval 
+
+We create new columns for day, hour, and gmt in seconds for different time zones (UTC and EDT).
+```{r}
+# process E1 data set
+df.E1 = transform(df.E1, datetime.utc = ymd_hms(Timestamp))
+df.E1 = transform(df.E1, weekday.utc = weekdays(datetime.utc), hour.uct=hour(datetime.utc))
+df.E1 = subset(df.E1, select=-Timestamp)
+df.E1 = transform(df.E1, datetime.edt = with_tz(datetime.utc, tzone="America/New_York"))
+df.E1 = transform(df.E1, weekday.edt=weekdays(datetime.edt), hour.edt = hour(datetime.edt))
+
+# process E2 data set
+df.E2 = transform(df.E2, datetime.utc = ymd_hms(Timestamp))
+df.E2 = transform(df.E2, weekday.utc = weekdays(datetime.utc), hour.uct=hour(datetime.utc))
+df.E2 = subset(df.E2, select=-Timestamp)
+df.E2 = transform(df.E2, datetime.edt = with_tz(datetime.utc, tzone="America/New_York"))
+df.E2 = transform(df.E2, weekday.edt=weekdays(datetime.edt), hour.edt = hour(datetime.edt))
+
+# process Activities data set
+df.Act = transform(df.Act, Timestamp=paste(Date, Start))
+df.Act = transform(df.Act, datetime.edt=mdy_hms(Timestamp, tz="America/New_York"))
+df.Act = transform(df.Act, weekday.edt=weekdays(datetime.edt), hour.edt=hour(datetime.edt), gmt_ts=as.numeric(datetime.edt))
+df.Act = subset(df.Act, select=-c(Date, Start, Time.Zone, Timestamp))
+
+# generate relative gmt_ts for all data set
+    ## this step is to avoid integer overflow and to make it easier to read
+min_gmt_ts = min(min(df.Act$gmt_ts), min(df.Act$gmt_ts), min(df.Act$gmt_ts))
+df.Act = transform(df.Act, relative_gmt_ts=gmt_ts-min_gmt_ts)
+df.E1 = transform(df.E1, relative_gmt_ts=gmt_ts-min_gmt_ts)
+df.E2 = transform(df.E2, relative_gmt_ts=gmt_ts-min_gmt_ts)
+
+# only keep relative_gmt_ts and weekday inEDT for analysis
+   ## p.s. weekdays are the day for all
+df.Act = subset(df.Act, select=-gmt_ts)
+df.E1 = subset(df.E1, select=-c(gmt_ts, weekday.utc))
+df.E2 = subset(df.E2, select=-c(gmt_ts, weekday.utc))
+```
+
+
+3. new data tables examination
+```{r}
+kable(head(df.Act, 2), format = "markdown", align='l')
+```
+```{r}
+kable(head(df.E1, 2), format = "markdown", align='l')
+```
+```{r}
+kable(head(df.E2, 2), format = "markdown", align='l')
+```
+
+
+## Exploratory analysis
+
+1. Summary of columns of interest which are the columns with information of date, time, and activities/events.
+```{r}
+summary(df.Act)
+summary(df.E1[, c(-2, -3)])
+summary(df.E2[, c(-2, -3)])
+```
+
+```{r}
+boxplot( relative_gmt_ts ~ ActivityCodes, df.Act)
+title("Activities.csv")
+boxplot( relative_gmt_ts ~ EventCodes, df.E1)
+title("Events_1.csv")
+boxplot( relative_gmt_ts ~ EventCodes, df.E2)
+title("Events_2.csv")
+```
+
+
+2. Aggregate the tables based on activities or events
+```{r}
+meansd.act = aggregate(relative_gmt_ts~ActivityCodes, df.Act, FUN=function(x)c(ave=mean(x), std=sd(x), len=length(x)))
+(meansd.act= meansd.act[order(meansd.act$relative_gmt_ts[, 1]), ])
+```
+
+```{r}
+meansd.e1 = aggregate(relative_gmt_ts~EventCodes, df.E1, FUN=function(x)c(ave=mean(x), std=sd(x), len=length(x)))
+(meansd.e1 = meansd.e1[order(meansd.e1$relative_gmt_ts[, 1]), ])
+```
+
+```{r}
+meansd.e2 = aggregate(relative_gmt_ts~EventCodes, df.E2, FUN=function(x)c(ave=mean(x), std=sd(x), len=length(x)))
+(meansd.e2 = meansd.e2[order(meansd.e2$relative_gmt_ts[, 1]), ])
+```
+
+
+## Exploration summary
+As shown in the boxplots and the aggregated table, we suspect
+
+  1. All events and activities happens on the same day; 
+  2. Events1 and Events2 has the same format but are at different times;
+  3. Activities may be part of the events, thus they should have similar times;
+  4. The time difference between activities and corresponding events should be very small;
+  
+  Based on the time-closeness, we may use KNN to classify the activities.
+  
+## Classification of Activities
+
+### Data preprocessing 
+We need to integrate the events data sets together and keep the relevant columns which are "relative_gmt_ts" 
+```{r}
+df.E = rbind(df.E1, df.E2)[ ,c('relative_gmt_ts', 'EventCodes')]
+df.A = df.Act[, c('relative_gmt_ts','ActivityCodes')]
+```
+
+Events table:
+```{r}
+kable(head(df.E, 3), format = "markdown", align='l')
+```
+
+Activities table:
+```{r}
+kable(head(df.A, 3), format = "markdown", align='l')
+````
+
+### k-Nearest_Neighbor classification
+
+We try 1, 5, 10, 15, 20-Nearest_Neighbor classification using the KNN classifier in library(class).
+
+```{r}
+# KNN prediction with k=1, 5, 10, 15, 20
+df.A$Prediction_1NN = knn(as.matrix(df.E$relative_gmt_ts), as.matrix(df.A$relative_gmt_ts), df.E$EventCodes, k=1)
+df.A$Prediction_5NN = knn(as.matrix(df.E$relative_gmt_ts), as.matrix(df.A$relative_gmt_ts), df.E$EventCodes, k=5)
+df.A$Prediction_10NN = knn(as.matrix(df.E$relative_gmt_ts), as.matrix(df.A$relative_gmt_ts), df.E$EventCodes, k=10)
+df.A$Prediction_15NN = knn(as.matrix(df.E$relative_gmt_ts), as.matrix(df.A$relative_gmt_ts), df.E$EventCodes, k=15)
+df.A$Prediction_20NN = knn(as.matrix(df.E$relative_gmt_ts), as.matrix(df.A$relative_gmt_ts), df.E$EventCodes, k=20)
+kable(df.A[order(df.A$ActivityCodes),-1], format="markdown", align = 'l')
+```
+
+From the results, we can see the prediction are very consistent among different k's. To use a moderate model complexity, we pick 5-NN predictions as the final prediction. The final prediction is a majority vote of all predictions. In most cases, there is only 1 choice. 
+```{r}
+# find the majority of prediction for a certain activity 
+activities = sort(unique(df.A$ActivityCodes))
+prediction = rep('', length(activities))
+for(i in 1:length(activities)){
+  pred = df.A$Prediction_5NN[ df.A$ActivityCodes==activities[i] ]
+  pred = as.character(names(which.max(table(pred))))
+  prediction[i] = pred
+}
+df.Final_Prediction = data.frame(Activites=activities, Match_Prediction=prediction)
+kable(df.Final_Prediction, format = "markdown", align = 'l')
+```
+
+
+## Conclusion
+The data sets consists of information of activities and events. By data exploration, the activities is suspected to be in a certain events at about the same time.  In the end, we use KNN classfier to match the activities to the corresponding events. From the results with different KNN classifiers, we are confident to make the prediction (as shown in the table above).
+
+
+__Note__
+  1. This report is to shown the whole process, from knowing nothing to predictive modeling; in real-work environment, most outputs and tables will be removed to keep the story straightforward and easy to understand. 
+  2. I should have allowed more time to ask questions and to learn more about the data, but I will be travaling to Mountain View tomorrow for an onsite interview. I hope we could talk on Monday afternoon if I have the opportunity.
+  3. If I have more time, I would write more documentation and use more R functions to keep it concise. 
+  4. I am proficient in Python and C++, too. 
+  
+  

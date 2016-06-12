@@ -1,0 +1,177 @@
+---
+title: "Simulation and Correlation"
+author: "Xiang (Sean) Cheng"
+date: "June 11, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+Revenue growth prediction is an interesting and practical problem. I do have questions because I am new to the real-business revenue prediction, but I will make some assumptions due to limitted time. In real working environment, we need to communciate to make decisions about the assumptions and parameters.
+
+#### Assumptions
+  1. The question we want to answer is the dependence of total revenue grwoth on correlation.
+  2. Correlation can be positive or negative;
+    * costomers need both features: positive correlation;
+    * costomers need only 1 feature: negative or no correlation;
+  3. Both features boost the revenue cumulatively (after correlation);
+    * Product with more features has higher price;
+    * Each feature can generate regular cash flow;
+  4. Both feature is unlikely to decrease revenue.
+    * Negative random variables have very small probability;
+    * Normal distribution: standard deviation<=0.02;
+    * Uniform distribution: min>=0.01;
+  5. Correlations are in a reasonable range. Here we assume it is between -0.8 and 0.8.
+  
+## Task 1: same distributions
+In this task, for simplicity, assume both are from the same distribution, either a normal distribution or a uniform distribution. 
+
+#### 1. Normal distributions
+
+```{r, echo=FALSE, warning=FALSE}
+# load libraries and constants
+library(MASS)
+r.min = -0.8
+r.max = 0.8
+```
+2 functions to generate correlated random normal variables and to examine the mean and correlation matrix.
+```{r, warning=FALSE}
+# function to generate correlated random normal variables
+normal_xy <- function(r=0.5, n=1e3, mu=c(0.05, 0.07), var=c(0.02^2, 0.02^2)){
+  sigma = matrix(c(var[1], r*prod(sqrt(var)), r*prod(sqrt(var)), var[2]),nrow=2)
+  normal_xy = mvrnorm(n=n, mu=mu, Sigma=sigma)
+  normal_xy = data.frame(normal_xy)
+  names(normal_xy) = c('X', 'Y')
+  return(normal_xy)
+}
+# function to check the mean and correlation of the random variables
+check_mean_cor <- function(df_xy){
+  mus = apply(df_xy, 2, mean)
+  cat("mean of X and Y:\n"); print(mus)
+  sigma = cor(df_xy)
+  cat("\ncorrelation matrix:\n"); print(sigma)
+}
+```
+
+Quick check the functions
+```{r, warning=FALSE}
+check_mean_cor(normal_xy(r=0.5, n=1e5))
+```
+
+Here, we simulate the revenue and plot the 90% confidence interval of the growth rate with both features. The standard deviations are 0.02 and 0.02.
+```{r, warning=FALSE, message=FALSE}
+# 100 different correlations
+n.obs = 10; CI=0.9;
+rs = seq(r.min, r.max, length.out=n.obs)
+total.mean = rep(0, n.obs)
+CI.low = rep(0, n.obs)
+CI.high = rep(0, n.obs)
+for(i in 1:n.obs){
+  r = rs[i]
+  total = rowSums(normal_xy(r=r, n=1e4)) 
+  total.mean[i] = mean(total)
+  CI.low[i] = quantile(total, (1-CI)/2.)
+  CI.high[i] = quantile(total, (1+CI)/2.)
+}
+require(ggplot2)
+df = data.frame(rs=rs, mean=total.mean, low=CI.low, high=CI.high)
+ggplot(df, aes(x=rs , y = mean)) + geom_point(size = 1) + geom_line()+
+  geom_line(aes(y = low, colour = "red"))+  geom_line(aes(y = high, colour = "red"))+
+  labs(x="Correlation between X and Y",y="Total Revenue Growth Rate", title=paste0("Total Growth Rate (Confidence Interval ", CI*100, "%)") )+ theme(legend.position="none")
+```
+
+
+#### 2. Uniform distributions
+In a similar manner, we can also get the revenue prediction of uniformly distributed rates. Instead of using a build-in function, we can use cholesky decomposition to transform independent random variables to correlated ones. (Functions are hidden in raw R markdown file by setting 'echo=FALSE'.)
+
+The ranges of uniform distribtuions are [0.03, 0.07] and [0.05, 0.09], respectively.
+```{r, warning=FALSE, echo=FALSE}
+# function to generate correlated random normal variables
+uniform_xy <- function(r=0.5, n=1e3, mu=c(0.05, 0.07), span=c(0.02, 0.02)){
+  unif_xy = rbind(runif(n, mu[1]-span[1], mu[1]+span[2]), runif(n, mu[2]-span[2], mu[2]+span[2]))
+  #print(rowMeans(unif_xy))
+  sigma = matrix(c(1, r, r, 1),nrow=2)
+  U = t(chol(sigma))
+  unif_xy = U %*% unif_xy
+  unif_xy = data.frame(t(unif_xy))  
+  names(unif_xy) = c('X', 'Y')
+  return(unif_xy)
+}
+
+# 100 different correlations
+n.obs = 10; CI=0.9;
+rs = seq(r.min, r.max, length.out=n.obs)
+total.mean = rep(0, n.obs)
+CI.low = rep(0, n.obs)
+CI.high = rep(0, n.obs)
+for(i in 1:n.obs){
+  r = rs[i]
+  total = rowSums(uniform_xy(r=r, n=1e4)) 
+  total.mean[i] = mean(total)
+  CI.low[i] = quantile(total, (1-CI)/2.)
+  CI.high[i] = quantile(total, (1+CI)/2.)
+}
+require(ggplot2)
+df = data.frame(rs=rs, mean=total.mean, low=CI.low, high=CI.high)
+ggplot(df, aes(x=rs , y = mean)) + geom_point(size = 1) + geom_line()+
+  geom_line(aes(y = low, colour = "red"))+  geom_line(aes(y = high, colour = "red"))+
+  labs(x="Correlation between X and Y",y="Total Revenue Growth Rate", title=paste0("Total Growth Rate (Confidence Interval ", CI*100, "%)") )+ theme(legend.position="none")
+```
+
+The result looks weired. It may be due to incorrect correlation transform using Cholesky deposition. 
+
+## Task2: different distributions
+We here assume the impact of X is normally distributed while the impact of Y is uniformally distributed. The functions are hidden in the raw R markdown file ('echo=FALSE').
+
+```{r, warning=FALSE, echo=FALSE}
+# function to generate correlated random normal variables
+rand_xy <- function(r=0.5, n=1e3, mu=c(0.05, 0.07), varx=0.02^2, spany=0.02){
+  rxy = rbind(rnorm(n, mu[1], sqrt(varx)), runif(n, mu[2]-spany, mu[2]+spany))
+  #print(rowMeans(unif_xy))
+  sigma = matrix(c(1, r, r, 1),nrow=2)
+  U = t(chol(sigma))
+  rxy = U %*% rxy
+  rxy = data.frame(t(rxy))  
+  names(rxy) = c('X', 'Y')
+  return(rxy)
+}
+
+```
+
+Test the correlation between the 2 samples.
+```{r}
+check_mean_cor(normal_xy(r=0.5, n=1e5))
+```{r}
+
+
+```{r, warning=FALSE, echo=FALSE}
+# 100 different correlations
+n.obs = 10; CI=0.9;
+rs = seq(r.min, r.max, length.out=n.obs)
+total.mean = rep(0, n.obs)
+CI.low = rep(0, n.obs)
+CI.high = rep(0, n.obs)
+for(i in 1:n.obs){
+  r = rs[i]
+  total = rowSums(rand_xy(r=r, n=1e4)) 
+  total.mean[i] = mean(total)
+  CI.low[i] = quantile(total, (1-CI)/2.)
+  CI.high[i] = quantile(total, (1+CI)/2.)
+}
+require(ggplot2)
+df = data.frame(rs=rs, mean=total.mean, low=CI.low, high=CI.high)
+ggplot(df, aes(x=rs , y = mean)) + geom_point(size = 1) + geom_line()+
+  geom_line(aes(y = low, colour = "red"))+  geom_line(aes(y = high, colour = "red"))+
+  labs(x="Correlation between X and Y",y="Total Revenue Growth Rate", title=paste0("Total Growth Rate (Confidence Interval ", CI*100, "%)") )+ theme(legend.position="none")
+```
+
+Note:
+
+  1. **Correlated random variables**:
+  In my research, we use advanced Monte Carlo algorithms, complex networks, and C++ to simulate physical systems. Mostly, we use independent random variables, so I don't have much experience in generating correlated random variables using R. There may be better ways to do, and I am very intestered to learn. I also hope I can learn new things from a job.
+
+  2. **Programming language**:
+  I can use R, Python, and C++. R is chosen here to be consistent with the guide R markdown file. I also have experience in interpreting outputs from SAS, STATA, and SPSS. The diverse skill set may make team-work easier.  
